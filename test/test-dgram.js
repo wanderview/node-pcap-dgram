@@ -25,9 +25,12 @@
 
 var PcapDgram = require('../dgram');
 
+var path = require('path');
+
 module.exports.nop = function(test) {
   test.expect(1);
-  var pdgram = new PcapDgram();
+  var file = path.join(__dirname, 'data', 'netbios-ns-b-register-winxp.pcap');
+  var pdgram = new PcapDgram(file, '192.168.207.2');
   test.ok(pdgram instanceof PcapDgram);
   test.done();
 };

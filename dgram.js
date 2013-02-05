@@ -26,9 +26,16 @@
 module.exports = PcapDgram;
 
 var EventEmitter = require('events').EventEmitter;
+var net = require('net');
 var util = require('util');
+var pcap = require('pcap-parser');
 
 util.inherits(PcapDgram, EventEmitter);
+
+// Event: message
+// Event: listening
+// Event: close
+// Event: error
 
 function PcapDgram(pcapSource, address, opts) {
   var self = (this instanceof PcapDgram)
@@ -39,18 +46,60 @@ function PcapDgram(pcapSource, address, opts) {
 
   EventEmitter.call(self, opts);
 
+  if (!_validAddr(address)) {
+    throw(new Error('PcapDgram requires a valid IPv4 address; [' +
+                    address + '] is invalid.'));
+  }
+
+  self._address = address;
+  self._port = ~~opts.port;
+
+  self._parser = pcap.parse(pcapSource);
+  self._parser.on('packet', self._onData.bind(self));
+  self._parser.on('end', self._onEnd.bind(self));
+  self._parser.on('error', self.emit.bind(self, 'error'));
+
+  process.nextTick(self.emit.bind(self, 'listening'));
+
   return self;
 }
 
-// Event: message
-// Event: listening
-// Event: close
-// Event: error
+PcapDgram.prototype.send = function(buf, offset, length, port, address, callback) {
+  // TODO: implement send
+};
 
-PcapDgram.prototype.send = function(buf, offset, length, port, address, callback) {};
+PcapDgram.prototype.close = function() {
+  // TODO: implement close
+};
+
+PcapDgram.prototype.address = function() {
+  return { address: this._address, family: 'IPv4', port: this._port };
+};
+
+PcapDgram.prototype._onData = function(packet) {
+  // TODO: parse and strip headers
+  var payload = packet.data;
+
+  // TODO: ignore packets not UDP
+  // TODO: auto-detect configured port if not set
+  // TODO: ignore packets not to/from configured IP address
+
+  // TODO: fill out rinfo based on parsed IP/UDP headers
+  var rinfo = {};
+
+  this.emit('message', payload, rinfo);
+};
+
+PcapDgram.prototype._onEnd = function() {
+  this.emit('close');
+};
+
+function _validAddr(address) {
+  return net.isIPv4(address) && address !== '0.0.0.0';
+}
+
+// Compatibility stubs
 PcapDgram.prototype.bind = function(port, address) {};
-PcapDgram.prototype.close = function() {};
-PcapDgram.prototype.address = function() {};
 PcapDgram.prototype.setBroadcast = function(flag) {};
 PcapDgram.prototype.setTTL = function(ttl) {};
 PcapDgram.prototype.setMulticastTTL = function(ttl) {};
