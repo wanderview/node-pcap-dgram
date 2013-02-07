@@ -28,14 +28,11 @@ module.exports = PcapDgram;
 var EventEmitter = require('events').EventEmitter;
 var net = require('net');
 var util = require('util');
+
+var ip = require('ip');
 var pcap = require('pcap-parser');
 
 util.inherits(PcapDgram, EventEmitter);
-
-// Event: message
-// Event: listening
-// Event: close
-// Event: error
 
 function PcapDgram(pcapSource, address, opts) {
   var self = (this instanceof PcapDgram)
@@ -81,17 +78,37 @@ PcapDgram.prototype.address = function() {
 };
 
 PcapDgram.prototype._onData = function(packet) {
-  // TODO: parse and strip headers
   var payload = packet.data;
 
-  // TODO: ignore packets not UDP
-  // TODO: auto-detect configured port if not set
-  // TODO: ignore packets not to/from configured IP address
+  var ether = this._parseEthernet(payload);
 
-  // TODO: fill out rinfo based on parsed IP/UDP headers
-  var rinfo = {};
+  // Only consider IP packets.  Ignore all others
+  if (ether.type !== 0x0800) {
+    return;
+  }
 
-  this.emit('message', payload, rinfo);
+  var iph = this._parseIP(ether.data);
+
+  // Only consider UDP packets without IP fragmentation
+  if (!iph || iph.protocol !== 0x11 || iph.mf || iph.offset) {
+    return;
+  }
+
+  var udp = this._parseUDP(iph.data);
+
+  // ignore packets not to configured IP address
+  // TODO: handle broadcast/multicast addresses
+  if (iph.dst !== this._address || (this._port && udp.dstPort !== this._port)) {
+    return;
+  }
+
+  // auto-detect configured port if not set
+  if (!this._port) {
+    this._port = udp.dstPort;
+  }
+
+  var rinfo = {address: iph.src, port: udp.srcPort, size: udp.data.length};
+  this.emit('message', udp.data, rinfo);
 };
 
 PcapDgram.prototype._onEnd = function() {
@@ -106,6 +123,99 @@ PcapDgram.prototype._onEnd = function() {
   }
 
   this.emit('close');
+};
+
+// TODO: move _parseEthernet to a separate module to shared with pcap-socket
+PcapDgram.prototype._parseEthernet = function(buf) {
+  var offset = 0;
+
+  var dst = buf.slice(offset, offset + 6);
+  offset += 6;
+
+  var src = buf.slice(offset, offset + 6);
+  offset += 6;
+
+  var type = buf.readUInt16BE(offset);
+  offset += 2;
+
+  var data = buf.slice(offset);
+
+  return { dst: dst, src: src, type: type, data: data };
+};
+
+// TODO: move _parseIP to a separate module to shared with pcap-socket
+PcapDgram.prototype._parseIP = function(buf) {
+  var offset = 0;
+
+  var tmp = buf.readUInt8(offset);
+  offset += 1;
+
+  var version = (tmp & 0xf0) >> 4;
+  if (version != 4) {
+    return null;
+  }
+
+  var headerLength = (tmp & 0x0f) * 4;
+
+  // skip DSCP and ECN fields
+  offset += 1;
+
+  var totalLength = buf.readUInt16BE(offset);
+  offset += 2;
+
+  var id = buf.readUInt16BE(offset);
+  offset += 2;
+
+  tmp = buf.readUInt16BE(offset);
+  offset += 2;
+
+  var flags = (tmp & 0xe000) >> 13;
+  var fragmentOffset = tmp & 0x1fff;
+
+  var df = !!(flags & 0x2);
+  var mf = !!(flags & 0x4);
+
+  var ttl = buf.readUInt8(offset);
+  offset += 1;
+
+  var protocol = buf.readUInt8(offset);
+  offset += 1;
+
+  var checksum = buf.readUInt16BE(offset);
+  offset += 2;
+
+  var src = ip.toString(buf.slice(offset, offset + 4));
+  offset += 4;
+
+  var dst = ip.toString(buf.slice(offset, offset + 4));
+  offset += 4;
+
+  var data = buf.slice(headerLength);
+
+  return { flags: {df: df, mf: mf}, id: id, offset: fragmentOffset, ttl: ttl,
+           protocol: protocol, src: src, dst: dst, data: data };
+};
+
+PcapDgram.prototype._parseUDP = function(buf) {
+  var offset = 0;
+
+  var srcPort = buf.readUInt16BE(offset);
+  offset += 2;
+
+  var dstPort = buf.readUInt16BE(offset);
+  offset += 2;
+
+  // length in bytes of header + data
+  var length = buf.readUInt16BE(offset);
+  offset += 2;
+
+  var checksum = buf.readUInt16BE(offset);
+  offset += 2;
+
+  var data = buf.slice(8, length);
+
+  return { srcPort: srcPort, dstPort: dstPort, length: length,
+           checksum: checksum, data: data };
 };
 
 // Compatibility stubs

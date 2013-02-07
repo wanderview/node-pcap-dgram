@@ -27,10 +27,48 @@ var PcapDgram = require('../dgram');
 
 var path = require('path');
 
-module.exports.nop = function(test) {
-  test.expect(1);
-  var file = path.join(__dirname, 'data', 'netbios-ns-b-register-winxp.pcap');
-  var pdgram = new PcapDgram(file, '192.168.207.2');
-  test.ok(pdgram instanceof PcapDgram);
-  test.done();
+var FILE = path.join(__dirname, 'data', 'netbios-ns-b-register-winxp.pcap');
+
+module.exports.message = function(test) {
+  test.expect(4);
+
+  var pdgram = new PcapDgram(FILE, '192.168.207.2');
+
+  pdgram.on('message', function(msg, rinfo) {
+    // assert values from inspecting pcap with tshark
+    test.equal(68, msg.length);
+    test.equal(msg.length, rinfo.size);
+    test.equal('192.168.207.128', rinfo.address);
+    test.equal(137, rinfo.port);
+  });
+
+  pdgram.on('close', function() {
+    test.done();
+  });
+};
+
+module.exports.output = function(test) {
+  test.expect(4);
+
+  var pdgram = new PcapDgram(FILE, '192.168.207.2');
+
+  var hello = new Buffer('Hello world!');
+  var remoteAddr = '192.168.207.128';
+  var remotePort = 137;
+
+  pdgram.on('output', function(msg, port, address) {
+    test.equal(hello.toString(), msg.toString());
+    test.equal(remotePort, port);
+    test.equal(remoteAddr, address);
+  });
+
+  pdgram.on('message', function(msg, rinfo) {
+    pdgram.send(hello, 0, hello.length, remotePort, remoteAddr, function(error) {
+      test.equal(null, error);
+    });
+  });
+
+  pdgram.on('close', function() {
+    test.done();
+  });
 };
