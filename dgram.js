@@ -46,7 +46,7 @@ function PcapDgram(pcapSource, address, opts) {
 
   EventEmitter.call(self, opts);
 
-  if (!_validAddr(address)) {
+  if (!net.isIPv4(address)) {
     throw(new Error('PcapDgram requires a valid IPv4 address; [' +
                     address + '] is invalid.'));
   }
@@ -65,11 +65,15 @@ function PcapDgram(pcapSource, address, opts) {
 }
 
 PcapDgram.prototype.send = function(buf, offset, length, port, address, callback) {
-  // TODO: implement send
+  var msg = buf.slice(offset, offset + length);
+  this.emit('output', msg, port, address);
+  if (typeof callback === 'function') {
+    callback(null, msg.length);
+  }
 };
 
 PcapDgram.prototype.close = function() {
-  // TODO: implement close
+  this._onEnd();
 };
 
 PcapDgram.prototype.address = function() {
@@ -91,12 +95,18 @@ PcapDgram.prototype._onData = function(packet) {
 };
 
 PcapDgram.prototype._onEnd = function() {
+  // Prevent duplicate 'close' events by only allowing this function to be
+  // called once.  This can happen when close() is called before the
+  // pcap-parser runs to completion.
+  this._onEnd = function() {};
+
+  // Also, match dgram core behavior and throw if send is called after end
+  this.send = function() {
+    throw new Error('Not running');
+  }
+
   this.emit('close');
 };
-
-function _validAddr(address) {
-  return net.isIPv4(address) && address !== '0.0.0.0';
-}
 
 // Compatibility stubs
 PcapDgram.prototype.bind = function(port, address) {};
