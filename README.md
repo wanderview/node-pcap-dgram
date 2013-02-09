@@ -76,6 +76,11 @@ can be validated for correctness.
     address wil be emitted via the `'message'` event. If not provided then
     the port will be automatically set to the port used on the first UDP
     packet sent to the address.
+  * `netmask` {String} An IPv4 netmask to use when pretending to be the
+    configured `address`.  This mainly determines if packets sent to subnet
+    specific broadcast addresses, like `'192.168.1.255'`, will be delivered.
+    Defaults to `'255.255.255.255'` meaning only unicast and full broadcast
+    will packets will be delivered.
 
 ### Event 'output'
 

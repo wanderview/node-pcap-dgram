@@ -50,6 +50,7 @@ function PcapDgram(pcapSource, address, opts) {
 
   self._address = address;
   self._port = ~~opts.port;
+  self._netmask = net.isIPv4(opts.netmask) ? opts.netmask : '255.255.255.255';
 
   self._parser = pcap.parse(pcapSource);
   self._parser.on('packet', self._onData.bind(self));
@@ -96,9 +97,8 @@ PcapDgram.prototype._onData = function(packet) {
 
   var udp = this._parseUDP(iph.data);
 
-  // ignore packets not to configured IP address
-  // TODO: handle broadcast/multicast addresses
-  if (iph.dst !== this._address || (this._port && udp.dstPort !== this._port)) {
+  // ignore packets not destined for configured IP/port
+  if (!this._matchAddr(iph.dst) || (this._port && udp.dstPort !== this._port)) {
     return;
   }
 
@@ -123,6 +123,12 @@ PcapDgram.prototype._onEnd = function() {
   }
 
   this.emit('close');
+};
+
+PcapDgram.prototype._matchAddr = function(address) {
+  // TODO: Add check for network specific broadcast address when my ip.or()
+  //       pull request hopefully goes through
+  return this._address === address || address === '255.255.255.255';
 };
 
 // TODO: move _parseEthernet to a separate module to shared with pcap-socket
