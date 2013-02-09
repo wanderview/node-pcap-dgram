@@ -8,11 +8,11 @@
     "datagram",
     "mock"
   ],
-  "version": "0.1.0",
+  "version": "0.0.0",
   "author": "Ben Kelly <ben@wanderview.com>",
   "license": "BSD",
   "dependencies": {
-    "ip": "~0.0.1",
+    "ip": "~0.0.3",
     "pcap-parser": "~0.2.1"
   },
   "devDependencies": {

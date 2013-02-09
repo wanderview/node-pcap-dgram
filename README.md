@@ -52,8 +52,8 @@ module.exports.example = function(test) {
 
 ## Limitations / TODO
 
-* Currently broadcast and multicast packets will not be delivered via the
-  `'message'` event.
+* Currently only supports IPv4.
+* Currently ignores all fragmented IP packets.
 
 ## Class PcapDgram
 
@@ -78,9 +78,10 @@ can be validated for correctness.
     packet sent to the address.
   * `netmask` {String} An IPv4 netmask to use when pretending to be the
     configured `address`.  This mainly determines if packets sent to subnet
-    specific broadcast addresses, like `'192.168.1.255'`, will be delivered.
-    Defaults to `'255.255.255.255'` meaning only unicast and full broadcast
-    will packets will be delivered.
+    specific broadcast addresses.  For example, setting a netmask of
+    `'255.255.255.0'` will cause the socket to deliver packets addressed
+    like this `'192.168.1.255'`.  Defaults to `'255.255.255.255'` meaning
+    only unicast and full broadcast will packets will be delivered.
 
 ### Event 'output'
 

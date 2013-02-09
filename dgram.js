@@ -51,6 +51,7 @@ function PcapDgram(pcapSource, address, opts) {
   self._address = address;
   self._port = ~~opts.port;
   self._netmask = net.isIPv4(opts.netmask) ? opts.netmask : '255.255.255.255';
+  self._broadcast = ip.or(ip.not(self._netmask), self._address);
 
   self._parser = pcap.parse(pcapSource);
   self._parser.on('packet', self._onData.bind(self));
@@ -126,9 +127,9 @@ PcapDgram.prototype._onEnd = function() {
 };
 
 PcapDgram.prototype._matchAddr = function(address) {
-  // TODO: Add check for network specific broadcast address when my ip.or()
-  //       pull request hopefully goes through
-  return this._address === address || address === '255.255.255.255';
+  return address === this._address ||
+         address === this._broadcast ||
+         address === '255.255.255.255';
 };
 
 // TODO: move _parseEthernet to a separate module to shared with pcap-socket
