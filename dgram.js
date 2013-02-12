@@ -25,6 +25,9 @@
 
 module.exports = PcapDgram;
 
+var stream = require('stream');
+var Readable = stream.Readable;
+// NOTE: we cannot use readable-stream for compat because it lacks objectMode
 var EventEmitter = require('events').EventEmitter;
 var net = require('net');
 var util = require('util');
@@ -53,15 +56,33 @@ function PcapDgram(pcapSource, address, opts) {
   self._netmask = net.isIPv4(opts.netmask) ? opts.netmask : '255.255.255.255';
   self._broadcast = ip.or(ip.not(self._netmask), self._address);
 
-  self._parser = pcap.parse(pcapSource);
-  self._parser.on('packet', self._onData.bind(self));
-  self._parser.on('end', self._onEnd.bind(self));
-  self._parser.on('error', self.emit.bind(self, 'error'));
+  self._stream = new Readable({objectMode: true});
+  self._stream._read = function() {};
+  self._stream.on('end', self._onEnd.bind(self));
 
-  process.nextTick(self.emit.bind(self, 'listening'));
+  self._reading = true;
+
+  self._parser = pcap.parse(pcapSource);
+  self._parser.on('end', self._stream.push.bind(self._stream, null));
+  self._parser.on('error', self.emit.bind(self, 'error'));
+  self._parser.on('packet', function(packet) {
+    var res = self._stream.push(packet);
+    if (!res) {
+      self._pause();
+      self._stream.once('drain', self._resume.bind(self));
+    }
+  });
 
   return self;
 }
+
+PcapDgram.prototype.start = function() {
+  var self = this;
+  process.nextTick(function() {
+    self.emit('listening');
+    self._flow();
+  });
+};
 
 PcapDgram.prototype.send = function(buf, offset, length, port, address, callback) {
   var msg = buf.slice(offset, offset + length);
@@ -77,6 +98,15 @@ PcapDgram.prototype.close = function() {
 
 PcapDgram.prototype.address = function() {
   return { address: this._address, family: 'IPv4', port: this._port };
+};
+
+PcapDgram.prototype._flow = function() {
+  var packet = this._stream.read();
+  if (!packet) {
+    this._stream.once('readable', this._flow.bind(this));
+    return;
+  }
+  this._onData(packet);
 };
 
 PcapDgram.prototype._onData = function(packet) {
@@ -130,6 +160,20 @@ PcapDgram.prototype._matchAddr = function(address) {
   return address === this._address ||
          address === this._broadcast ||
          address === '255.255.255.255';
+};
+
+PcapDgram.prototype._pause = function(address) {
+  if (this._reading) {
+    this._reading = false;
+    this._parser.stream.pause();
+  }
+};
+
+PcapDgram.prototype._resume = function(address) {
+  if (!this._reading) {
+    this._reading = true;
+    this._parser.stream.resume();
+  }
 };
 
 // TODO: move _parseEthernet to a separate module to shared with pcap-socket

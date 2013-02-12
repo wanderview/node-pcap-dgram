@@ -45,6 +45,8 @@ module.exports.message = function(test) {
   pdgram.on('close', function() {
     test.done();
   });
+
+  pdgram.start();
 };
 
 module.exports.output = function(test) {
@@ -71,4 +73,6 @@ module.exports.output = function(test) {
   pdgram.on('close', function() {
     test.done();
   });
+
+  pdgram.start();
 };

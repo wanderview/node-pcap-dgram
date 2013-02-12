@@ -47,6 +47,8 @@ module.exports.example = function(test) {
   pdgram.on('close', function() {
     test.done();
   });
+
+  pdgram.start();
 };
 ```
 
@@ -82,6 +84,12 @@ can be validated for correctness.
     `'255.255.255.0'` will cause the socket to deliver packets addressed
     like this `'192.168.1.255'`.  Defaults to `'255.255.255.255'` meaning
     only unicast and full broadcast will packets will be delivered.
+
+### pdgram.start()
+
+Start the flow of packets.  The `'listening'` event will be emitted at this
+point.  If this is not called, then data will back up and eventually be
+dropped depending on how many packets are in the pcap file.
 
 ### Event 'output'
 

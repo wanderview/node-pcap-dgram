@@ -61,4 +61,6 @@ module.exports.example = function(test) {
   pdgram.on('close', function() {
     test.done();
   });
+
+  pdgram.start();
 };
