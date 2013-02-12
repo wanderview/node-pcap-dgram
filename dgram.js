@@ -57,7 +57,6 @@ function PcapDgram(pcapSource, address, opts) {
   self._broadcast = ip.or(ip.not(self._netmask), self._address);
 
   self._stream = new Readable({objectMode: true});
-  self._stream._read = function() {};
   self._stream.on('end', self._onEnd.bind(self));
 
   self._reading = true;
@@ -69,9 +68,10 @@ function PcapDgram(pcapSource, address, opts) {
     var res = self._stream.push(packet);
     if (!res) {
       self._pause();
-      self._stream.once('drain', self._resume.bind(self));
     }
   });
+
+  self._stream._read = self._resume.bind(self);
 
   return self;
 }
