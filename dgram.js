@@ -32,6 +32,7 @@ var EventEmitter = require('events').EventEmitter;
 var net = require('net');
 var util = require('util');
 
+var EtherFrame = require('ether-frame');
 var ip = require('ip');
 var pcap = require('pcap-parser');
 
@@ -112,14 +113,14 @@ PcapDgram.prototype._flow = function() {
 PcapDgram.prototype._onData = function(packet) {
   var payload = packet.data;
 
-  var ether = this._parseEthernet(payload);
+  var ether = new EtherFrame(payload);
 
   // Only consider IP packets.  Ignore all others
-  if (ether.type !== 0x0800) {
+  if (ether.type !== 'ip') {
     return;
   }
 
-  var iph = this._parseIP(ether.data);
+  var iph = this._parseIP(payload.slice(ether.bytes));
 
   // Only consider UDP packets without IP fragmentation
   if (!iph || iph.protocol !== 0x11 || iph.mf || iph.offset) {
@@ -174,24 +175,6 @@ PcapDgram.prototype._resume = function(address) {
     this._reading = true;
     this._parser.stream.resume();
   }
-};
-
-// TODO: move _parseEthernet to a separate module to shared with pcap-socket
-PcapDgram.prototype._parseEthernet = function(buf) {
-  var offset = 0;
-
-  var dst = buf.slice(offset, offset + 6);
-  offset += 6;
-
-  var src = buf.slice(offset, offset + 6);
-  offset += 6;
-
-  var type = buf.readUInt16BE(offset);
-  offset += 2;
-
-  var data = buf.slice(offset);
-
-  return { dst: dst, src: src, type: type, data: data };
 };
 
 // TODO: move _parseIP to a separate module to shared with pcap-socket
