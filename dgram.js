@@ -27,7 +27,9 @@ module.exports = PcapDgram;
 
 var stream = require('stream');
 var Readable = stream.Readable;
-// NOTE: we cannot use readable-stream for compat because it lacks objectMode
+if (!Readable) {
+  Readable = require('readable-stream');
+}
 var EventEmitter = require('events').EventEmitter;
 var net = require('net');
 var util = require('util');
