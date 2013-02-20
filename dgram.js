@@ -35,6 +35,7 @@ var net = require('net');
 var util = require('util');
 
 var EtherFrame = require('ether-frame');
+var IpHeader = require('ip-header');
 var ip = require('ip');
 var pcap = require('pcap-parser');
 
@@ -109,7 +110,11 @@ PcapDgram.prototype._flow = function() {
     this._stream.once('readable', this._flow.bind(this));
     return;
   }
-  this._onData(packet);
+  try {
+    this._onData(packet);
+  } catch (error) {
+    // silently ignore packets we don't know how to parse
+  }
 };
 
 PcapDgram.prototype._onData = function(packet) {
@@ -122,14 +127,14 @@ PcapDgram.prototype._onData = function(packet) {
     return;
   }
 
-  var iph = this._parseIP(payload.slice(ether.length));
+  var iph = new IpHeader(payload, ether.length);
 
   // Only consider UDP packets without IP fragmentation
-  if (!iph || iph.protocol !== 0x11 || iph.mf || iph.offset) {
+  if (iph.protocol !== 'udp' || iph.flags.mf || iph.offset) {
     return;
   }
 
-  var udp = this._parseUDP(iph.data);
+  var udp = this._parseUDP(payload, ether.length + iph.length);
 
   // ignore packets not destined for configured IP/port
   if (!this._matchAddr(iph.dst) || (this._port && udp.dstPort !== this._port)) {
@@ -179,61 +184,8 @@ PcapDgram.prototype._resume = function(address) {
   }
 };
 
-// TODO: move _parseIP to a separate module to shared with pcap-socket
-PcapDgram.prototype._parseIP = function(buf) {
-  var offset = 0;
-
-  var tmp = buf.readUInt8(offset);
-  offset += 1;
-
-  var version = (tmp & 0xf0) >> 4;
-  if (version != 4) {
-    return null;
-  }
-
-  var headerLength = (tmp & 0x0f) * 4;
-
-  // skip DSCP and ECN fields
-  offset += 1;
-
-  var totalLength = buf.readUInt16BE(offset);
-  offset += 2;
-
-  var id = buf.readUInt16BE(offset);
-  offset += 2;
-
-  tmp = buf.readUInt16BE(offset);
-  offset += 2;
-
-  var flags = (tmp & 0xe000) >> 13;
-  var fragmentOffset = tmp & 0x1fff;
-
-  var df = !!(flags & 0x2);
-  var mf = !!(flags & 0x4);
-
-  var ttl = buf.readUInt8(offset);
-  offset += 1;
-
-  var protocol = buf.readUInt8(offset);
-  offset += 1;
-
-  var checksum = buf.readUInt16BE(offset);
-  offset += 2;
-
-  var src = ip.toString(buf.slice(offset, offset + 4));
-  offset += 4;
-
-  var dst = ip.toString(buf.slice(offset, offset + 4));
-  offset += 4;
-
-  var data = buf.slice(headerLength);
-
-  return { flags: {df: df, mf: mf}, id: id, offset: fragmentOffset, ttl: ttl,
-           protocol: protocol, src: src, dst: dst, data: data };
-};
-
-PcapDgram.prototype._parseUDP = function(buf) {
-  var offset = 0;
+PcapDgram.prototype._parseUDP = function(buf, offset) {
+  offset = ~~offset;
 
   var srcPort = buf.readUInt16BE(offset);
   offset += 2;
