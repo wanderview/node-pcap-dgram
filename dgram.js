@@ -122,7 +122,7 @@ PcapDgram.prototype._onData = function(packet) {
     return;
   }
 
-  var iph = this._parseIP(payload.slice(ether.bytes));
+  var iph = this._parseIP(payload.slice(ether.length));
 
   // Only consider UDP packets without IP fragmentation
   if (!iph || iph.protocol !== 0x11 || iph.mf || iph.offset) {
