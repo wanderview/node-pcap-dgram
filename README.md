@@ -21,7 +21,7 @@ module.exports.example = function(test) {
 
   // Create a dgram socket using a netbios name service pcap file
   var file = path.join(__dirname, 'data', 'netbios-ns-b-register-winxp.pcap');
-  var pdgram = new PcapDgram(file, '192.168.207.2');
+  var pdgram = new PcapDgram(file, '192.168.207.2', {paused: true});
 
   // When we receive the netbios name service packet, validate it
   pdgram.on('message', function(msg, rinfo) {
@@ -47,9 +47,10 @@ module.exports.example = function(test) {
   pdgram.on('close', function() {
     test.done();
   });
-
-  pdgram.start();
 };
+
+// because we constructor pdgram with {paused:true} we must explicitly start
+pdgram.resume();
 ```
 
 ## Limitations / TODO
@@ -73,7 +74,7 @@ can be validated for correctness.
   will act as that IP address.  Packets sent to this address will be emitted
   via the `'message'` event.
 * `opts` {Object | null} Optional parameters
-  * `port` {Number | null} The UDP port associated with the `address`
+  * `port` {Number} The UDP port associated with the `address`
     passed as the second argument.  Packets sent to this port at the given
     address wil be emitted via the `'message'` event. If not provided then
     the port will be automatically set to the port used on the first UDP
@@ -84,12 +85,21 @@ can be validated for correctness.
     `'255.255.255.0'` will cause the socket to deliver packets addressed
     like this `'192.168.1.255'`.  Defaults to `'255.255.255.255'` meaning
     only unicast and full broadcast will packets will be delivered.
+  * `paused` {Boolean} If true, the PcapDgram will start in the paused state
+    and will not emit any `'message'` events until `resume()` is called.
 
-### pdgram.start()
+### pdgram.pause()
 
-Start the flow of packets.  The `'listening'` event will be emitted at this
-point.  If this is not called, then data will back up and eventually be
-dropped depending on how many packets are in the pcap file.
+Stop the flow of packets.  Note, if the stream is paused for too long, the
+underlying buffer may not be able support the number of pcap packets and
+begin dropping data.
+
+### pdgram.resume()
+
+Start the flow of packets after `pause()` has been called or the if PcapDgram
+was created with the `{paused: true}` option.  Note, if `{paused: true}` was
+used during construction, then the `'listening'` event will not be emiited
+until the first time `resume()` is called.
 
 ### Event 'output'
 

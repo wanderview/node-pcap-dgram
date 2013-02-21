@@ -63,7 +63,9 @@ function PcapDgram(pcapSource, address, opts) {
   self._stream = new Readable({objectMode: true});
   self._stream.on('end', self._onEnd.bind(self));
 
-  self._reading = true;
+  self._pcapReading = true;
+
+  self._reading = false;
 
   self._parser = pcap.parse(pcapSource);
   self._parser.on('end', self._stream.push.bind(self._stream, null));
@@ -71,21 +73,35 @@ function PcapDgram(pcapSource, address, opts) {
   self._parser.on('packet', function(packet) {
     var res = self._stream.push(packet);
     if (!res) {
-      self._pause();
+      self._pcapPause();
     }
   });
 
-  self._stream._read = self._resume.bind(self);
+  self._stream._read = self._pcapResume.bind(self);
+
+  if (!opts.paused) {
+    process.nextTick(self.resume.bind(self));
+  }
 
   return self;
 }
 
-PcapDgram.prototype.start = function() {
+PcapDgram.prototype.pause = function() {
+  this._reading = false;
+};
+
+PcapDgram.prototype.resume = function() {
   var self = this;
-  process.nextTick(function() {
-    self.emit('listening');
-    self._flow();
-  });
+  if (!self._reading) {
+    self._reading = true;
+    process.nextTick(function() {
+      if (self._needListening) {
+        self._needListening = false;
+        self.emit('listening');
+      }
+      self._flow();
+    });
+  }
 };
 
 PcapDgram.prototype.send = function(buf, offset, length, port, address, callback) {
@@ -105,6 +121,10 @@ PcapDgram.prototype.address = function() {
 };
 
 PcapDgram.prototype._flow = function() {
+  if (!this._reading) {
+    return;
+  }
+
   var packet = this._stream.read();
   if (!packet) {
     this._stream.once('readable', this._flow.bind(this));
@@ -170,16 +190,16 @@ PcapDgram.prototype._matchAddr = function(address) {
          address === '255.255.255.255';
 };
 
-PcapDgram.prototype._pause = function(address) {
-  if (this._reading) {
-    this._reading = false;
+PcapDgram.prototype._pcapPause = function(address) {
+  if (this._pcapReading) {
+    this._pcapReading = false;
     this._parser.stream.pause();
   }
 };
 
-PcapDgram.prototype._resume = function(address) {
-  if (!this._reading) {
-    this._reading = true;
+PcapDgram.prototype._pcapResume = function(address) {
+  if (!this._pcapReading) {
+    this._pcapReading = true;
     this._parser.stream.resume();
   }
 };

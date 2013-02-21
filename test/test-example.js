@@ -35,7 +35,7 @@ module.exports.example = function(test) {
 
   // Create a dgram socket using a netbios name service pcap file
   var file = path.join(__dirname, 'data', 'netbios-ns-b-register-winxp.pcap');
-  var pdgram = new PcapDgram(file, '192.168.207.2');
+  var pdgram = new PcapDgram(file, '192.168.207.2', {paused: true});
 
   // When we receive the netbios name service packet, validate it
   pdgram.on('message', function(msg, rinfo) {
@@ -62,5 +62,6 @@ module.exports.example = function(test) {
     test.done();
   });
 
-  pdgram.start();
+  // because we constructor pdgram with {paused:true} we must explicitly start
+  pdgram.resume();
 };
