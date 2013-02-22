@@ -12,10 +12,10 @@
   "author": "Ben Kelly <ben@wanderview.com>",
   "license": "BSD",
   "dependencies": {
-    "ether-frame": "~0.2.0",
+    "ether-stream": "~0.1.0",
     "ip": "~0.0.4",
     "ip-header": "~0.1.0",
-    "pcap-parser": "~0.2.1",
+    "pcap-stream": "~0.1.0",
     "readable-stream": "~0.3.0"
   },
   "devDependencies": {

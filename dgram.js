@@ -34,10 +34,10 @@ var EventEmitter = require('events').EventEmitter;
 var net = require('net');
 var util = require('util');
 
-var EtherFrame = require('ether-frame');
+var EtherStream = require('ether-stream');
 var IpHeader = require('ip-header');
 var ip = require('ip');
-var pcap = require('pcap-parser');
+var PcapStream = require('pcap-stream');
 
 util.inherits(PcapDgram, EventEmitter);
 
@@ -60,27 +60,17 @@ function PcapDgram(pcapSource, address, opts) {
   self._netmask = net.isIPv4(opts.netmask) ? opts.netmask : '255.255.255.255';
   self._broadcast = ip.or(ip.not(self._netmask), self._address);
 
-  self._stream = new Readable({objectMode: true});
-  self._stream.on('end', self._onEnd.bind(self));
-
-  self._pcapReading = true;
-
   self._reading = false;
 
-  self._parser = pcap.parse(pcapSource);
-  self._parser.on('end', self._stream.push.bind(self._stream, null));
-  self._parser.on('error', self.emit.bind(self, 'error'));
-  self._parser.on('packet', function(packet) {
-    var res = self._stream.push(packet);
-    if (!res) {
-      self._pcapPause();
-    }
-  });
+  self._pstream = new PcapStream(pcapSource);
+  self._estream = new EtherStream();
+  self._estream.on('end', self._onEnd.bind(self));
+  self._estream.on('error', self.emit.bind(self, 'error'));
 
-  self._stream._read = self._pcapResume.bind(self);
+  self._pstream.pipe(self._estream);
 
   if (!opts.paused) {
-    process.nextTick(self.resume.bind(self));
+    self.resume();
   }
 
   return self;
@@ -125,49 +115,50 @@ PcapDgram.prototype._flow = function() {
     return;
   }
 
-  var packet = this._stream.read();
-  if (!packet) {
-    this._stream.once('readable', this._flow.bind(this));
+  var msg = this._estream.read();
+  if (!msg) {
+    this._estream.once('readable', this._flow.bind(this));
     return;
   }
-  try {
-    this._onData(packet);
-  } catch (error) {
-    // silently ignore packets we don't know how to parse
-  }
+
+  this._onData(msg);
+
+  return this._flow();
 };
 
-PcapDgram.prototype._onData = function(packet) {
-  var payload = packet.data;
-
-  var ether = new EtherFrame(payload);
-
+PcapDgram.prototype._onData = function(msg) {
   // Only consider IP packets.  Ignore all others
-  if (ether.type !== 'ip') {
+  if (msg.ether.type !== 'ip') {
     return;
   }
 
-  var iph = new IpHeader(payload, ether.length);
+  try {
+    var iph = new IpHeader(msg.data);
 
-  // Only consider UDP packets without IP fragmentation
-  if (iph.protocol !== 'udp' || iph.flags.mf || iph.offset) {
-    return;
+    // Only consider UDP packets without IP fragmentation
+    if (iph.protocol !== 'udp' || iph.flags.mf || iph.offset) {
+      return;
+    }
+
+    var udp = this._parseUDP(msg.data, iph.length);
+
+    // ignore packets not destined for configured IP/port
+    if (!this._matchAddr(iph.dst) || (this._port &&
+                                      udp.dstPort !== this._port)) {
+      return;
+    }
+
+    // auto-detect configured port if not set
+    if (!this._port) {
+      this._port = udp.dstPort;
+    }
+
+    var rinfo = {address: iph.src, port: udp.srcPort, size: udp.data.length};
+    this.emit('message', udp.data, rinfo);
+
+  } catch (error) {
+    // silently ignore packets we can't parse
   }
-
-  var udp = this._parseUDP(payload, ether.length + iph.length);
-
-  // ignore packets not destined for configured IP/port
-  if (!this._matchAddr(iph.dst) || (this._port && udp.dstPort !== this._port)) {
-    return;
-  }
-
-  // auto-detect configured port if not set
-  if (!this._port) {
-    this._port = udp.dstPort;
-  }
-
-  var rinfo = {address: iph.src, port: udp.srcPort, size: udp.data.length};
-  this.emit('message', udp.data, rinfo);
 };
 
 PcapDgram.prototype._onEnd = function() {
@@ -188,20 +179,6 @@ PcapDgram.prototype._matchAddr = function(address) {
   return address === this._address ||
          address === this._broadcast ||
          address === '255.255.255.255';
-};
-
-PcapDgram.prototype._pcapPause = function(address) {
-  if (this._pcapReading) {
-    this._pcapReading = false;
-    this._parser.stream.pause();
-  }
-};
-
-PcapDgram.prototype._pcapResume = function(address) {
-  if (!this._pcapReading) {
-    this._pcapReading = true;
-    this._parser.stream.resume();
-  }
 };
 
 PcapDgram.prototype._parseUDP = function(buf, offset) {
