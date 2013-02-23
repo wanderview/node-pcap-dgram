@@ -133,14 +133,14 @@ PcapDgram.prototype._onData = function(msg) {
   }
 
   try {
-    var iph = new IpHeader(msg.data);
+    var iph = new IpHeader(msg.data, msg.offset);
 
     // Only consider UDP packets without IP fragmentation
     if (iph.protocol !== 'udp' || iph.flags.mf || iph.offset) {
       return;
     }
 
-    var udp = this._parseUDP(msg.data, iph.length);
+    var udp = this._parseUDP(msg.data, msg.offset + iph.length);
 
     // ignore packets not destined for configured IP/port
     if (!this._matchAddr(iph.dst) || (this._port &&
