@@ -35,7 +35,7 @@ var net = require('net');
 var util = require('util');
 
 var EtherStream = require('ether-stream');
-var IpHeader = require('ip-header');
+var IpStream = require('ip-stream');
 var ip = require('ip');
 var PcapStream = require('pcap-stream');
 
@@ -64,10 +64,11 @@ function PcapDgram(pcapSource, address, opts) {
 
   self._pstream = new PcapStream(pcapSource);
   self._estream = new EtherStream();
-  self._estream.on('end', self._onEnd.bind(self));
-  self._estream.on('error', self.emit.bind(self, 'error'));
+  self._ipstream = new IpStream();
+  self._ipstream.on('end', self._onEnd.bind(self));
+  self._ipstream.on('error', self.emit.bind(self, 'error'));
 
-  self._pstream.pipe(self._estream);
+  self._pstream.pipe(self._estream).pipe(self._ipstream);
 
   if (!opts.paused) {
     self.resume();
@@ -115,9 +116,9 @@ PcapDgram.prototype._flow = function() {
     return;
   }
 
-  var msg = this._estream.read();
+  var msg = this._ipstream.read();
   if (!msg) {
-    this._estream.once('readable', this._flow.bind(this));
+    this._ipstream.once('readable', this._flow.bind(this));
     return;
   }
 
@@ -127,24 +128,17 @@ PcapDgram.prototype._flow = function() {
 };
 
 PcapDgram.prototype._onData = function(msg) {
-  // Only consider IP packets.  Ignore all others
-  if (msg.ether.type !== 'ip') {
-    return;
-  }
-
   try {
-    var iph = new IpHeader(msg.data, msg.offset);
-
     // Only consider UDP packets without IP fragmentation
-    if (iph.protocol !== 'udp' || iph.flags.mf || iph.offset) {
+    if (msg.ip.protocol !== 'udp' || msg.ip.flags.mf || msg.ip.offset) {
       return;
     }
 
-    var udp = this._parseUDP(msg.data, msg.offset + iph.length);
+    var udp = this._parseUDP(msg.data, msg.offset);
 
     // ignore packets not destined for configured IP/port
-    if (!this._matchAddr(iph.dst) || (this._port &&
-                                      udp.dstPort !== this._port)) {
+    if (!this._matchAddr(msg.ip.dst) || (this._port &&
+                                         udp.dstPort !== this._port)) {
       return;
     }
 
@@ -153,7 +147,7 @@ PcapDgram.prototype._onData = function(msg) {
       this._port = udp.dstPort;
     }
 
-    var rinfo = {address: iph.src, port: udp.srcPort, size: udp.data.length};
+    var rinfo = {address: msg.ip.src, port: udp.srcPort, size: udp.data.length};
     this.emit('message', udp.data, rinfo);
 
   } catch (error) {
