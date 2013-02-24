@@ -128,12 +128,11 @@ PcapDgram.prototype._flow = function() {
 };
 
 PcapDgram.prototype._onData = function(msg) {
-  try {
-    // Only consider UDP packets without IP fragmentation
-    if (msg.ip.protocol !== 'udp' || msg.ip.flags.mf || msg.ip.offset) {
-      return;
-    }
+  if (msg.ip.protocol !== 'udp') {
+    return;
+  }
 
+  try {
     var udp = this._parseUDP(msg.data, msg.offset);
 
     // ignore packets not destined for configured IP/port
