@@ -38,6 +38,7 @@ var EtherStream = require('ether-stream');
 var IpStream = require('ip-stream');
 var ip = require('ip');
 var PcapStream = require('pcap-stream');
+var UdpHeader = require('udp-header');
 
 util.inherits(PcapDgram, EventEmitter);
 
@@ -133,21 +134,24 @@ PcapDgram.prototype._onData = function(msg) {
   }
 
   try {
-    var udp = this._parseUDP(msg.data, msg.offset);
+    msg.udp = new UdpHeader(msg.data, msg.offset);
+    msg.offset += msg.udp.length;
 
     // ignore packets not destined for configured IP/port
     if (!this._matchAddr(msg.ip.dst) || (this._port &&
-                                         udp.dstPort !== this._port)) {
+                                         msg.udp.dstPort !== this._port)) {
       return;
     }
 
     // auto-detect configured port if not set
     if (!this._port) {
-      this._port = udp.dstPort;
+      this._port = msg.udp.dstPort;
     }
 
-    var rinfo = {address: msg.ip.src, port: udp.srcPort, size: udp.data.length};
-    this.emit('message', udp.data, rinfo);
+    var rinfo = {address: msg.ip.src, port: msg.udp.srcPort,
+                 size: msg.udp.dataLength};
+
+    this.emit('message', msg.data.slice(msg.offset), rinfo);
 
   } catch (error) {
     // silently ignore packets we can't parse
@@ -172,28 +176,6 @@ PcapDgram.prototype._matchAddr = function(address) {
   return address === this._address ||
          address === this._broadcast ||
          address === '255.255.255.255';
-};
-
-PcapDgram.prototype._parseUDP = function(buf, offset) {
-  offset = ~~offset;
-
-  var srcPort = buf.readUInt16BE(offset);
-  offset += 2;
-
-  var dstPort = buf.readUInt16BE(offset);
-  offset += 2;
-
-  // length in bytes of header + data
-  var length = buf.readUInt16BE(offset);
-  offset += 2;
-
-  var checksum = buf.readUInt16BE(offset);
-  offset += 2;
-
-  var data = buf.slice(8, length);
-
-  return { srcPort: srcPort, dstPort: dstPort, length: length,
-           checksum: checksum, data: data };
 };
 
 // Compatibility stubs

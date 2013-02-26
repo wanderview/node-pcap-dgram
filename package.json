@@ -16,7 +16,8 @@
     "ip": "~0.0.4",
     "ip-stream": "~0.2.0",
     "pcap-stream": "~0.1.0",
-    "readable-stream": "~0.3.0"
+    "readable-stream": "~0.3.0",
+    "udp-header": "~0.1.0"
   },
   "devDependencies": {
     "nodeunit": "~0.7.4"
