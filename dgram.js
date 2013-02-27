@@ -38,7 +38,7 @@ var EtherStream = require('ether-stream');
 var IpStream = require('ip-stream');
 var ip = require('ip');
 var PcapStream = require('pcap-stream');
-var UdpHeader = require('udp-header');
+var UdpStream = require('udp-stream');
 
 util.inherits(PcapDgram, EventEmitter);
 
@@ -66,10 +66,11 @@ function PcapDgram(pcapSource, address, opts) {
   self._pstream = new PcapStream(pcapSource);
   self._estream = new EtherStream();
   self._ipstream = new IpStream();
-  self._ipstream.on('end', self._onEnd.bind(self));
-  self._ipstream.on('error', self.emit.bind(self, 'error'));
+  self._ustream = new UdpStream();
+  self._ustream.on('end', self._onEnd.bind(self));
+  self._ustream.on('error', self.emit.bind(self, 'error'));
 
-  self._pstream.pipe(self._estream).pipe(self._ipstream);
+  self._pstream.pipe(self._estream).pipe(self._ipstream).pipe(self._ustream);
 
   if (!opts.paused) {
     self.resume();
@@ -117,9 +118,9 @@ PcapDgram.prototype._flow = function() {
     return;
   }
 
-  var msg = this._ipstream.read();
+  var msg = this._ustream.read();
   if (!msg) {
-    this._ipstream.once('readable', this._flow.bind(this));
+    this._ustream.once('readable', this._flow.bind(this));
     return;
   }
 
@@ -129,33 +130,21 @@ PcapDgram.prototype._flow = function() {
 };
 
 PcapDgram.prototype._onData = function(msg) {
-  if (msg.ip.protocol !== 'udp') {
+  // ignore packets not destined for configured IP/port
+  if (!this._matchAddr(msg.ip.dst) || (this._port &&
+                                       msg.udp.dstPort !== this._port)) {
     return;
   }
 
-  try {
-    msg.udp = new UdpHeader(msg.data, msg.offset);
-    msg.offset += msg.udp.length;
-
-    // ignore packets not destined for configured IP/port
-    if (!this._matchAddr(msg.ip.dst) || (this._port &&
-                                         msg.udp.dstPort !== this._port)) {
-      return;
-    }
-
-    // auto-detect configured port if not set
-    if (!this._port) {
-      this._port = msg.udp.dstPort;
-    }
-
-    var rinfo = {address: msg.ip.src, port: msg.udp.srcPort,
-                 size: msg.udp.dataLength};
-
-    this.emit('message', msg.data.slice(msg.offset), rinfo);
-
-  } catch (error) {
-    // silently ignore packets we can't parse
+  // auto-detect configured port if not set
+  if (!this._port) {
+    this._port = msg.udp.dstPort;
   }
+
+  var rinfo = {address: msg.ip.src, port: msg.udp.srcPort,
+               size: msg.udp.dataLength};
+
+  this.emit('message', msg.data.slice(msg.offset), rinfo);
 };
 
 PcapDgram.prototype._onEnd = function() {
