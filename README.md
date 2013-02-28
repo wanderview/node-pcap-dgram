@@ -56,7 +56,6 @@ pdgram.resume();
 ## Limitations / TODO
 
 * Currently only supports IPv4.
-* Currently ignores all fragmented IP packets.
 
 ## Class PcapDgram
 
