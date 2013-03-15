@@ -9,7 +9,7 @@ Mock UDP socket based on pcap file data.
 ```javascript
 'use strict';
 
-var PcapDgram = require('../dgram');
+var PcapDgram = require('pcap-dgram');
 var path = require('path');
 
 module.exports.example = function(test) {
@@ -38,19 +38,20 @@ module.exports.example = function(test) {
   });
 
   // Validate the response was sent
-  pdgram.on('output', function(msg, port, address) {
-    test.equal(hello.toString(), msg.toString());
-    test.equal(remotePort, port);
-    test.equal(remoteAddr, address);
+  pdgram.output.on('readable', function() {
+    var msg = pdgram.output.read();
+    test.equal(hello.toString(), msg.data.toString());
+    test.equal(remotePort, msg.udp.dstPort);
+    test.equal(remoteAddr, msg.ip.dst);
   });
 
   pdgram.on('close', function() {
     test.done();
   });
-};
 
-// because we constructor pdgram with {paused:true} we must explicitly start
-pdgram.resume();
+  // because we constructor pdgram with {paused:true} we must explicitly start
+  pdgram.resume();
+};
 ```
 
 ## Limitations / TODO
@@ -61,7 +62,7 @@ pdgram.resume();
 
 The PcapDgram class implements the same API as the [dgram.Socket][] class.
 Data is delivered to the `'message'` event by reading data from a pcap
-file.  Outgoing data is redirected to the `'output'` event so that it
+file.  Outgoing data is redirected to the `output` stream so that it
 can be validated for correctness.
 
 ### var pdgram = new PcapDgram(pcapSource, address, opts)
@@ -100,15 +101,23 @@ was created with the `{paused: true}` option.  Note, if `{paused: true}` was
 used during construction, then the `'listening'` event will not be emiited
 until the first time `resume()` is called.
 
-### Event 'output'
+### pdgram.output
 
-The `'output'` event will fire whenever the `send()` fuction is called.
-Instead of writing the data out to the specified remote host, the data is
-provided to this event instead.  This allows test code to validate that
-the correct output is being produced by the code under test.
+All messages passed to the `send()` function will be available to be read
+from the `pdgram.output` passthrough stream.  This allows test code to validate
+that the correct output is being produced by the code under test.
 
-* `msg` {Buffer} The UDP payload to send to the remote host
-* `port` {Number} The UDP port of the remote host
-* `address` {Address} The IPv4 address of the remote host
+The messages available on the `output` stream look like this:
+
+* `msg` {Object} The object representing the sent message.
+  * `data` {Buffer} The UDP payload to send to the remote host
+  * `ip` {Object} Object providing IP related information for the message
+    * `dst` {String} The IPv4 address of the remote host
+    * `src` {String} The IPv4 address configured on the mock dgram
+    * `protocol` {String} Always contains the value `'udp'`
+  * `udp` {Object} Object providing UDP related information for the message
+    * `dstPort` {Number} The UDP port of the remote host
+    * `srcPort` {Number} The UDP port configured on the mock dgram
+    * `dataLength` {Number} The number of bytes in the `data` buffer
 
 [dgram.Socket]: http://nodejs.org/api/dgram.html#dgram_class_socket

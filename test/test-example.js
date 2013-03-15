@@ -52,10 +52,11 @@ module.exports.example = function(test) {
   });
 
   // Validate the response was sent
-  pdgram.on('output', function(msg, port, address) {
-    test.equal(hello.toString(), msg.toString());
-    test.equal(remotePort, port);
-    test.equal(remoteAddr, address);
+  pdgram.output.on('readable', function() {
+    var msg = pdgram.output.read();
+    test.equal(hello.toString(), msg.data.toString());
+    test.equal(remotePort, msg.udp.dstPort);
+    test.equal(remoteAddr, msg.ip.dst);
   });
 
   pdgram.on('close', function() {
